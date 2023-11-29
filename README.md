@@ -539,6 +539,10 @@ docker run -it --rm -v $PWD:/opt -p 8000:8000 -e MODEL=/opt/chatglm-ggml.bin cha
 # openai api server
 docker run -it --rm -v $PWD:/opt -p 8000:8000 -e MODEL=/opt/chatglm-ggml.bin chatglm.cpp \
     uvicorn chatglm_cpp.openai_api:app --host 0.0.0.0 --port 8000
+# cuda
+docker build . --network=host -t chatglm.cpp -f Dockerfile.cuda
+docker run -itd -e NVIDIA_VISIBLE_DEVICES=0 -v /home/fante/chatglm3-ggml_q8.bin:/chatglm3-ggml_q8.bin -p 8080:8000 -e MODEL=/chatglm3-ggml_q8.bin chatglm.cpp:latest
+
 ```
 
 For CUDA support, make sure [nvidia-docker](https://github.com/NVIDIA/nvidia-docker) is installed. Then run:
