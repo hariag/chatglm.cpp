@@ -32,7 +32,9 @@ class ChatCompletionRequest(BaseModel):
     model: str = "default-model"
     messages: List[ChatMessage]
     temperature: float = Field(default=0.95, ge=0.0, le=2.0)
+    top_k: int = Field(default=0, ge=0, le=1024)
     top_p: float = Field(default=0.7, ge=0.0, le=1.0)
+    repetition_penalty: float = Field(default=1.0, ge=0.0, le=100.0)
     stream: bool = False
     max_tokens: int = Field(default=2048, ge=0)
 
@@ -159,8 +161,10 @@ async def create_chat_completion(body: ChatCompletionRequest) -> ChatCompletionR
         max_length=body.max_tokens,
         max_context_length=max_context_length,
         do_sample=body.temperature > 0,
+        top_k=body.top_k,
         top_p=body.top_p,
         temperature=body.temperature,
+        repetition_penalty=body.repetition_penalty,
     )
     logging.info(f'prompt: "{messages[-1].content}", sync response: "{output.content}"')
     prompt_tokens = len(pipeline.tokenizer.encode_messages(messages, max_context_length))
