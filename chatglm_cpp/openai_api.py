@@ -13,6 +13,19 @@ from pydantic_settings import BaseSettings
 from sse_starlette.sse import EventSourceResponse
 
 logging.basicConfig(level=logging.INFO, format=r"%(asctime)s - %(module)s - %(levelname)s - %(message)s")
+MODEL_PATH="/local/llm_models/chatglm-ggml_q8_0.bin"
+MODEL_HASH = None
+PREFIX = "/llmapi"
+
+def calculate_sha256(filename):
+    hash_sha256 = hashlib.sha256()
+    blksize = 1024 * 1024
+
+    with open(filename, "rb") as f:
+        for chunk in iter(lambda: f.read(blksize), b""):
+            hash_sha256.update(chunk)
+
+    return hash_sha256.hexdigest()
 
 
 class Settings(BaseSettings):
@@ -123,6 +136,9 @@ class ChatCompletionResponse(BaseModel):
 
 settings = Settings()
 app = FastAPI()
+global MODEL_HASH
+if not MODEL_HASH:
+    MODEL_HASH = calculate_sha256(MODEL_PATH)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
@@ -170,7 +186,7 @@ async def stream_chat_event_publisher(history, body):
         raise e
 
 
-@app.post("/v1/chat/completions")
+@app.post("{}/v1/chat/completions".format(PREFIX))
 async def create_chat_completion(body: ChatCompletionRequest) -> ChatCompletionResponse:
     def to_json_arguments(arguments):
         def tool_call(**kwargs):
@@ -237,32 +253,52 @@ async def create_chat_completion(body: ChatCompletionRequest) -> ChatCompletionR
     )
 
 
-class ModelCard(BaseModel):
+class ModelData(TypedDict):
     id: str
-    object: Literal["model"] = "model"
-    owned_by: str = "owner"
-    permission: List = []
+    object: Literal["model"]
+    owned_by: str
+    permissions: List[str]
+    title: str
+    model_name: str
+    hash: str
+    sha256: str
+    filename: str
+    config: dict
 
 
-class ModelList(BaseModel):
-    object: Literal["list"] = "list"
-    data: List[ModelCard] = []
+class ModelList(TypedDict):
+    object: Literal["list"]
+    data: List[ModelData]
 
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "object": "list",
-                    "data": [{"id": "gpt-3.5-turbo", "object": "model", "owned_by": "owner", "permission": []}],
-                }
-            ]
-        }
+
+@router.get("{}/v1/models".format(PREFIX), summary="Models")
+async def get_models() -> ModelList:
+    sha256 = MODEL_HASH
+    if sha256:
+        shorthash = sha256[:10]
+    else:
+        shorthash = ""
+    file_name = MODEL_PATH
+    title = "{} [{}]".format(os.path.basename(file_name), shorthash)
+    model_name = Path(file_name).stem
+    config = {}
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": MODEL_PATH,
+                "object": "model",
+                "owned_by": "me",
+                "permissions": [],
+                "title": title,
+                "model_name": model_name,
+                "hash": shorthash,
+                "sha256": sha256,
+                "filename": file_name,
+                "config": config
+            }
+        ],
     }
-
-
-@app.get("/v1/models")
-async def list_models() -> ModelList:
-    return ModelList(data=[ModelCard(id="gpt-3.5-turbo")])
 
 
 if __name__ == "__main__":
